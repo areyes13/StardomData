@@ -1,0 +1,2 @@
+# StardomData
+スターダム
