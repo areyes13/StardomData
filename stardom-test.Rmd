@@ -1,0 +1,475 @@
+---
+title: "Network Analysis of Stardom Wrestling Singles Title Matches"
+output: html_document
+---
+
+
+```{r SETUP, include = F}
+knitr::opts_chunk$set(echo = TRUE)
+
+options(java.parameters = "-Xmx8000m")
+options(scipen=999)
+
+library(readr)
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(colorspace)
+library(ggthemes)
+library(showtext)
+library(igraph)
+library(visNetwork)
+```
+
+
+```{r STARDOM DATA PREP, include = F}
+# UPDATE TO YOUR WORKING DIRECTORY
+setwd("~/Projects/Stardom")
+
+# IBM PLEX SANS
+font_add(family = "IBM Plex Sans", # Name you want to use 
+         regular = "IBMPlexSans-Regular.ttf",
+         bold = "IBMPlexSans-Bold.ttf")
+
+# IBM PLEX SANS LIGHT (FOR PLOT TEXT)
+font_add(family = "IBM Plex Sans Light", # Name you want to use 
+         regular = "IBMPlexSans-Light.ttf")
+
+showtext_auto()
+
+# levels for belts
+belt_hierarchy <- c('NONE', 'FUTURE BELT', 'HIGH SPEED BELT', 
+                    "ARTIST BELT", "TAG BELT",
+                    'SWA BELT', 'WHITE BELT', 'RED BELT') %>% rev()
+
+# belt color palette
+belt_pal <- c('#fb6a4a',
+              '#eff3ff',
+              '#dfc27d',
+              # "#8dd3c7",
+              # "#fcc5c0",
+              '#969696',
+              '#abd9e9')
+
+# custom function for title defenses
+belter <- function(string = NULL) {
+  out <- case_when(string %>% str_detect('CONTENDER|TOURNAMENT') ~ 'NONE',
+                   string %>% str_detect('RED') ~ 'RED BELT',
+                   string %>% str_detect('WHITE') ~ "WHITE BELT",
+                   string %>% str_detect('TAG') ~ "TAG BELT",
+                   string %>% str_detect('ARTIST') ~ "ARTIST BELT",
+                   string %>% str_detect("HIGH SPEED") ~ "HIGH SPEED BELT",
+                   string %>% str_detect('SWA') ~ "SWA BELT",
+                   string %>% str_detect('FUTURE') ~ 'FUTURE BELT',
+                   T ~ "NONE")
+  out <-  factor(out, levels = belt_hierarchy)
+  return(out)
+}
+
+# faction color palette function
+gang_pal <- function(string = NULL) {
+  out <- case_when(string %>% str_detect("QUEEN'S QUEST") ~ "#fdcc8a",
+                   string %>% str_detect("OEDO TAI") ~ "#8856a7",
+                   string %>% str_detect("DONNA DEL MONDO") ~ "#252525",
+                   string %>% str_detect("COSMIC ANGELS") ~ "#fcc5c0",
+                   string %>% str_detect("STARS") ~ "#f7f7f7",
+                   string %>% str_detect("GOD'S EYE") ~ "#fb6a4a",
+                   string %>% str_detect("UNAFFILIATED") ~ "#8cc2ca",
+                   T ~ "#969696")
+  return(out)
+}
+
+# faction color palette function
+belter_pal <- function(string = NULL) {
+  out <- case_when(string %>% str_detect('RED') ~ '#ef6f6a',
+                   string %>% str_detect('WHITE') ~ "#fcfbfd",
+                   string %>% str_detect("HIGH SPEED") ~ "#6388b4",
+                   string %>% str_detect('SWA') ~ "#EDC948",
+                   string %>% str_detect('FUTURE') ~ '#55ad89',
+                   T ~ "NONE")
+  return(out)
+}
+
+
+time_arrow <- function(date = NULL) {
+  curr_yr = year(Sys.Date())
+  diff = curr_yr - year(date)
+  
+  out <- case_when(diff %in% 0:1 ~ 0.7,
+                   diff %in% 2:3 ~ 0.6,
+                   diff %in% 4:5 ~ 0.4,
+                   diff %in% 6:8 ~ 0.3,
+                   T ~ 0.2)
+  
+  return(out)
+}
+
+# manual mapping, kinda sucks
+faction_map <- read_csv('Stardom Factions.csv') %>%
+  mutate(NAME = str_squish(NAME))
+
+# SET "Date" FIELD AS DATE-TYPE USING ymd(...)
+# FLAG SINGLE MATCHES (BASED ON MATCH FIELDS WITH "/" OR "&)
+# ADDITIONAL FLAG FOR 3 / 4 WAY MATCHES (MAY NOT BE CAPTURED IN SINGLE_FLG)
+stardom <- read_excel("Stardom Match Guide.xlsx",
+                      col_types = c("text", "text", "text", 
+                                    "text", "text", "text", "text")) %>%
+  rename_with(toupper) %>%
+  mutate(DATE = ymd(DATE),
+         MATCH = toupper(MATCH),
+         NOTES = toupper(NOTES),
+         WINNER = toupper(WINNER),
+         SINGLE_FLG = !str_detect(string = MATCH, pattern = "/|&|MATCH"),
+         MULTI_FLG = str_count(string = MATCH, pattern = "VS") > 1,
+         BELT = belter(NOTES),
+         TITLE_FLG = BELT != 'NONE',
+         WINNER = case_when(WINNER == 'KAIRI HOJO' ~ "KAIRI", 
+                            WINNER == "KAGETSU" ~ "YU ISHINO (FKA KAGETSU)",
+                            WINNER %in% c('KAORI YONEYAMA', "DEATH YAMA-SAN") ~ "FUKIGEN DEATH",
+                            T ~ WINNER)) %>%
+  mutate(across(ends_with("_FLG"), ~ replace_na(., FALSE)))
+```
+
+
+
+## Stardom Wrestling
+
+<https://www.stardom-world.com/>
+
+
+
+## Stardom Singles Championship Belts
+
+Red Belt, White Belt, High Speed Belt, SWA Belt, Future Belt
+
+Current Champions:
+
+## Data
+
+<https://github.com/areyes13/StardomData>
+
+
+```{r TABLE, echo = F, results = "asis"}
+library(knitr)
+library(dplyr)
+kable(stardom %>%
+        filter(TITLE_FLG) %>%
+        select(DATE, MATCH, WINNER, BELT) %>%
+        head(), 
+      caption = "Sample of Stardom Data")
+
+```
+
+
+## How to Interpret Directed Graph
+
+Example
+
+Edge Palette
+
+Faction Palette
+
+Degree
+
+## Overall Network
+
+```{r FULL NETWORK, echo = F, message = F}
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         # BELT %in% c('FUTURE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01')
+
+# title <- title %>%
+#   group_by(INDEX) %>%
+#   filter(sum(NAME == 'UTAMI HAYASHISHITA') >= 1 ) %>%
+#   ungroup()
+
+# title <- title %>%
+#   filter(FACTION == 'NOT ACTIVE')
+
+# title <- title %>%
+#   filter(BELT %in% c('RED BELT'))
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+set.seed(666)
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 45)
+```
+
+## Full Network Statistics
+```{r, include = F, message = F}
+net <- graph_from_data_frame(d = edges %>%
+                               mutate(from = TO,
+                                      to = FROM) %>%
+                               select(from, to, GROUP) %>%
+                               rename_with(tolower),
+                             vertices = nodes %>%
+                               select(ID, LABEL, GROUP, n) %>%
+                               rename_with(tolower),
+                             directed = T)
+```
+
+**Density:** The proportion of present edges from all possible edges in the network.
+```{r, echo = F}
+ecount(net)/(vcount(net)*(vcount(net)-1))
+```
+
+**Reciprocity:** the proportion of reciprocated ties (for a directed network).
+```{r, echo =F}
+reciprocity(net)
+```
+
+**Average path length:** Mean of the shortest distance between each pair of nodes in the network
+```{r, echo = F}
+mean_distance(net, directed=T)
+```
+**Diameter:** Longest path between any two nodes.
+```{r, echo = F, message = F, results = "asis"}
+kable(tibble(ID = get_diameter(net, directed=T) %>% 
+         as_ids %>% 
+         as.numeric()) %>%
+  left_join(nodes %>%
+              select(ID, GROUP, LABEL)) %>%
+  select(LABEL, GROUP))
+```
+
+**Hub:** statistic measuring number of *OUTGOING* links for each node. In this context an *outgoing* link means a loss in a title match so we can use this statistic to loosely identify wrestlers that were regularly featured in key matches but didn't win the majority of the time. Note that this statistic attempts to measure the quality of each "hub" by giving higher scores to nodes with *incoming* links as well as boosting hubs with outgoing links to other nodes with high degrees. In other words, a high scoring hub will have a losing record in title matches, but those loses will tend be against more experienced opponents (measured by number of links).
+Wrestlers without any *incoming* links (title wins) are not considered high quality hubs (sorry Jungle Kyona fans).
+```{r, echo = F, message= F, results = "asis"}
+hub <- hub_score(net, weights = NA)$vector %>% 
+  as_tibble(rownames = NA) %>%
+  rownames_to_column("ID") %>%
+  mutate(ID = as.numeric(ID)) %>%
+  left_join(nodes %>%
+              select(ID, GROUP, LABEL)) %>%
+  arrange(-value) %>%
+  rename(NAME = LABEL,
+         HUB = value)
+
+kable(hub %>% 
+        select(NAME, GROUP, HUB) %>%
+        head(10))
+```
+
+**Authority:** Incoming links. Measures wrestlers with high win rates against experienced title contenders (measured by number of links)
+
+```{r,  echo = F, message= F, results = "asis"}
+auth <- authority_score(net, weight = NA)$vector %>% 
+  as_tibble(rownames = NA) %>%
+  rownames_to_column("ID") %>%
+  mutate(ID = as.numeric(ID)) %>%
+  left_join(nodes %>%
+              select(ID, GROUP, LABEL)) %>%
+  arrange(-value) %>%
+  rename(NAME = LABEL,
+         AUTHORITY = value)
+
+kable(auth %>% 
+        select(NAME, GROUP, AUTHORITY) %>%
+        head(10))
+```
+
+**Closeness:** Closeness centrality indicates how close a node is to all other nodes in the network.
+It is calculated as the average of the shortest path length from the node to every other node in the network
+
+Individuals with high 'influence' over network
+```{r,  echo = F, message= F, results = "asis"}
+
+close <- closeness(net, mode="all", weights=NA) %>% 
+  as_tibble(rownames = NA) %>%
+  rownames_to_column("ID") %>%
+  mutate(ID = as.numeric(ID)) %>%
+  left_join(nodes %>%
+              select(ID, GROUP, LABEL)) %>%
+  arrange(-value)
+
+kable(close %>%
+        rename(NAME = LABEL) %>%
+        select(NAME, GROUP) %>%
+        head(10))
+```
+
+**Eigenvector:** Eigenvector centrality is used to measure the level of influence of a node within a network.
+Each node within the network will be given a score or value:
+the higher the score the greater the level of influence within the network.
+This score is relative to the number of connections a node will have to other nodes.
+Connections to high-scoring eigenvector centrality nodes
+contribute more to the score of the node than equal connections to low-scoring nodes.
+```{r echo = F, message= F, results = "asis"}
+
+eigen_df <-eigen_centrality(net, directed=T, weights=NA)$vector %>% 
+  as_tibble(rownames = NA) %>%
+  rownames_to_column("ID") %>%
+  mutate(ID = as.numeric(ID)) %>%
+  left_join(nodes %>%
+              select(ID, GROUP, LABEL)) %>%
+  arrange(-value)
+
+kable(eigen_df %>%
+        rename(NAME = LABEL) %>%
+        select(NAME, GROUP) %>%
+        head(10))
+```
+
+**Betweenness:** Betweenness (Number of geodesics that pass through the node or the edge.)
+Vertices with high betweenness may have considerable influence
+within a network by virtue of their control over information passing between others.
+They are also the ones whose removal from the network will most disrupt communications
+between other vertices because they lie on the largest number of paths taken by messages.
+```{r echo = F, message= F, results = "asis"}
+
+between_df <- betweenness(net, directed=T, weights=NA) %>% 
+  as_tibble(rownames = NA) %>%
+  rownames_to_column("ID") %>%
+  mutate(ID = as.numeric(ID)) %>%
+  left_join(nodes %>%
+              select(ID, GROUP, LABEL)) %>%
+  arrange(-value)
+
+kable(between_df %>%
+        rename(NAME = LABEL) %>%
+        select(NAME, GROUP) %>%
+        head(10))
+```
+
+## White Belt W/L
+```{r WHITE BELT BAR, echo = F, message=F}
+title %>%
+  filter(BELT %in% c('WHITE BELT')) %>%
+  group_by(NAME, FACTION) %>%
+  summarise(degree = n_distinct(INDEX),
+            win = sum(WINNER == NAME),
+            loss = sum(WINNER != NAME)) %>%
+  mutate(loss = loss * -1) %>%
+  gather(RESULT, COUNT, -NAME:-degree) %>%
+  filter(degree >= 3) %>%
+  ggplot(aes(reorder(NAME, abs(COUNT), sum), COUNT, fill = RESULT)) +
+  geom_col(color = 'grey20')+
+  geom_hline(yintercept = 0)+
+  scale_y_continuous(name = '\nCount of White Belt Matches',
+                     breaks = seq(-10,15, 5),
+                     labels = c('10\nLosses', '5\nLosses', '0', '5\nWins', '10\nWins', '15\nWins'))+
+  coord_flip()+
+  theme_classic()+
+  theme(text = element_text(family="IBM Plex Sans"),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 16, family = 'IBM Plex Sans Light'),
+        legend.title = element_text(size = 20),
+        plot.title = element_text(face = 'bold', color = 'grey20', size = 30),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 20, face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 24),
+        panel.border = element_blank(),
+        plot.background = element_blank())
+```
+
+## Red Belt W/L
+```{r RED, echo = F, message=F}
+# Red Belt
+title %>%
+  filter(BELT %in% c('RED BELT')) %>%
+  group_by(NAME, FACTION) %>%
+  summarise(degree = n_distinct(INDEX),
+            win = sum(WINNER == NAME),
+            loss = sum(WINNER != NAME)) %>%
+  mutate(loss = loss * -1) %>%
+  gather(RESULT, COUNT, -NAME:-degree) %>%
+  filter(degree >= 3) %>%
+  ggplot(aes(reorder(NAME, abs(COUNT), sum), COUNT, fill = RESULT)) +
+  geom_col(color = 'grey20')+
+  geom_hline(yintercept = 0)+
+  scale_y_continuous(name = '\nCount of Red Belt Matches',
+                     breaks = seq(-10,15, 5),
+                     labels = c('10\nLosses', '5\nLosses', '0', '5\nWins', '10\nWins', '15\nWins'))+
+  coord_flip()+
+  theme_classic()+
+  theme(text = element_text(family="IBM Plex Sans"),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 16, family = 'IBM Plex Sans Light'),
+        legend.title = element_text(size = 20),
+        plot.title = element_text(face = 'bold', color = 'grey20', size = 30),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 20, face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 24),
+        panel.border = element_blank(),
+        plot.background = element_blank())
+```
+
