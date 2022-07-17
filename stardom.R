@@ -136,6 +136,7 @@ stardom <- read_excel("Stardom Match Guide.xlsx",
          BELT = belter(NOTES),
          TITLE_FLG = BELT != 'NONE',
          WINNER = case_when(WINNER == 'KAIRI HOJO' ~ "KAIRI", 
+                            WINNER == "KAGETSU" ~ "YU ISHINO (FKA KAGETSU)",
                             WINNER %in% c('KAORI YONEYAMA', "DEATH YAMA-SAN") ~ "FUKIGEN DEATH",
                             T ~ WINNER)) %>%
   mutate(across(ends_with("_FLG"), ~ replace_na(., FALSE)))
@@ -213,7 +214,7 @@ edges <- title %>%
          COLOR.COLOR = belter_pal(GROUP),
          COLOR.HIGHLIGHT = COLOR.COLOR,
          COLOR.OPACITY = time_arrow(DATE),
-         ARROWS = "to",
+         ARROWS = "from",
          smooth.type = 'curvedCW',
          smooth.roundness = .5,
          selectionWidth = 7)
@@ -234,7 +235,7 @@ visNetwork(nodes %>%
                                      avoidOverlap = 0.5,
                                      springLength = 20,
                                      damping = 0.15),
-             minVelocity = 25)
+             minVelocity = 35)
 
 
 # 3.1) Stats: Degree  --------------------------------------------------------------
@@ -256,20 +257,84 @@ degree_df <- title %>%
 
 
 
+# 3.1b) Stats: Degree by belt (W/L) ---------------------------------------
+
+# White Belt
 title %>%
-  filter(BELT %in% c('RED BELT', 'WHITE BELT')) %>%
+  filter(BELT %in% c('WHITE BELT')) %>%
   group_by(NAME, FACTION) %>%
   summarise(degree = n_distinct(INDEX),
             win = sum(WINNER == NAME),
             loss = sum(WINNER != NAME)) %>%
   mutate(loss = loss * -1) %>%
   gather(RESULT, COUNT, -NAME:-degree) %>%
-  filter(degree >= 1,
-         FACTION != 'NOT ACTIVE') %>%
+  filter(degree >= 3) %>%
   ggplot(aes(reorder(NAME, abs(COUNT), sum), COUNT, fill = RESULT)) +
   geom_col(color = 'grey20')+
   geom_hline(yintercept = 0)+
-  scale_y_continuous(name = '\nCount of White & Red Belt Matches',
+  scale_y_continuous(name = '\nCount of White Belt Matches',
+                     breaks = seq(-10,15, 5),
+                     labels = c('10\nLosses', '5\nLosses', '0', '5\nWins', '10\nWins', '15\nWins'))+
+  coord_flip()+
+  theme_classic()+
+  theme(text = element_text(family="IBM Plex Sans"),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 16, family = 'IBM Plex Sans Light'),
+        legend.title = element_text(size = 20),
+        plot.title = element_text(face = 'bold', color = 'grey20', size = 30),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 20, face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 24),
+        panel.border = element_blank(),
+        plot.background = element_blank())
+
+# Red Belt
+title %>%
+  filter(BELT %in% c('RED BELT')) %>%
+  group_by(NAME, FACTION) %>%
+  summarise(degree = n_distinct(INDEX),
+            win = sum(WINNER == NAME),
+            loss = sum(WINNER != NAME)) %>%
+  mutate(loss = loss * -1) %>%
+  gather(RESULT, COUNT, -NAME:-degree) %>%
+  filter(degree >= 3) %>%
+  ggplot(aes(reorder(NAME, abs(COUNT), sum), COUNT, fill = RESULT)) +
+  geom_col(color = 'grey20')+
+  geom_hline(yintercept = 0)+
+  scale_y_continuous(name = '\nCount of Red Belt Matches',
+                     breaks = seq(-10,15, 5),
+                     labels = c('10\nLosses', '5\nLosses', '0', '5\nWins', '10\nWins', '15\nWins'))+
+  coord_flip()+
+  theme_classic()+
+  theme(text = element_text(family="IBM Plex Sans"),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = "right",
+        legend.text = element_text(size = 16, family = 'IBM Plex Sans Light'),
+        legend.title = element_text(size = 20),
+        plot.title = element_text(face = 'bold', color = 'grey20', size = 30),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 20, face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 24),
+        panel.border = element_blank(),
+        plot.background = element_blank())
+
+# FUTURE Belt
+title %>%
+  filter(BELT %in% c('FUTURE BELT')) %>%
+  group_by(NAME, FACTION) %>%
+  summarise(degree = n_distinct(INDEX),
+            win = sum(WINNER == NAME),
+            loss = sum(WINNER != NAME)) %>%
+  mutate(loss = loss * -1) %>%
+  gather(RESULT, COUNT, -NAME:-degree) %>%
+  filter(degree >= 3) %>%
+  ggplot(aes(reorder(NAME, abs(COUNT), sum), COUNT, fill = RESULT)) +
+  geom_col(color = 'grey20')+
+  geom_hline(yintercept = 0)+
+  scale_y_continuous(name = '\nCount of Future Belt Matches',
                      breaks = seq(-10,15, 5),
                      labels = c('10\nLosses', '5\nLosses', '0', '5\nWins', '10\nWins', '15\nWins'))+
   coord_flip()+
@@ -292,7 +357,9 @@ title %>%
 # https://kateto.net/wp-content/uploads/2018/03/R%20for%20Networks%20Workshop%20-%20Ognyanova%20-%202018.pdf
 
 net <- graph_from_data_frame(d = edges %>%
-                               select(FROM, TO, GROUP) %>%
+                               mutate(from = TO,
+                                      to = FROM) %>%
+                               select(from, to, GROUP) %>%
                                rename_with(tolower),
                              vertices = nodes %>%
                                select(ID, LABEL, GROUP, n) %>%
@@ -417,11 +484,11 @@ between_df <- betweenness(net, directed=T, weights=NA) %>%
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # shortest path between first and current RED BELT CHAMPIONS
 tibble(ID = shortest_paths(net,
-               from = V(net)[label == "SYURI"],
-               to = V(net)[label == "NANAE TAKAHASHI"],
-               output = 'vpath')$vpath[[1]] %>%
-  as_ids %>%
-  as.numeric()) %>%
+                           from = V(net)[label == "SYURI"],
+                           to = V(net)[label == "NANAE TAKAHASHI"],
+                           output = 'vpath')$vpath[[1]] %>%
+         as_ids %>%
+         as.numeric()) %>%
   left_join(nodes %>%
               select(ID, GROUP, LABEL))
 # white belt
@@ -461,8 +528,8 @@ net.sym <- as.undirected(net, mode= "collapse",
 
 
 clique_df <- tibble(LABEL = lapply(cliques(net.sym, min = 3),
-              function(x) { paste(V(net)$label[x], collapse = ", ") }) %>%
-         unlist()) %>%
+                                   function(x) { paste(V(net)$label[x], collapse = ", ") }) %>%
+                      unlist()) %>%
   mutate(CLIQUE = row_number(),
          CLIQUE_SIZE = str_count(LABEL, ", ") + 1,
          FULL = LABEL)%>%
@@ -478,14 +545,14 @@ clique_df <- tibble(LABEL = lapply(cliques(net.sym, min = 3),
 ceb <- cluster_edge_betweenness(net)
 
 cluster_df <- tibble(ID = membership(ceb) %>% names %>% as.numeric,
-       MEMBERSHIP = membership(ceb) %>% unname) %>%
+                     MEMBERSHIP = membership(ceb) %>% unname) %>%
   group_by(MEMBERSHIP) %>%
   mutate(CLUST_SIZE = n_distinct(ID)) %>%
   arrange(-CLUST_SIZE, MEMBERSHIP) %>%
   left_join(nodes %>%
               select(ID, GROUP, LABEL)) %>%
   mutate(FULL = paste(LABEL, collapse = ", "))
-  
+
 
 
 
@@ -578,7 +645,7 @@ data %>%
 
 # 4.4) TILE MAP? ----------------------------------------------------------
 red_tile_df <- data %>%
-  filter(BELT %in% c('RED BELT', 'WHITE BELT'),
+  filter(BELT %in% c('RED BELT'),
          DATE >= '2018-01-01',
          WINNER != NAME) %>%
   group_by(INDEX) %>%
@@ -602,9 +669,727 @@ red_tile_df %>%
   scale_y_discrete(limits=rev)
 
 
+# 5.1) Sub Networks: RED -------------------------------------------------------
+
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('RED BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01')
 
 
 
 
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+
+# 5.2) Sub Networks: WHITE -------------------------------------------------------
+
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('WHITE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01')
+
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+
+
+# 5.3) Sub Networks: high speed -------------------------------------------------------
+
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('HIGH SPEED BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01')
+
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+
+
+
+
+# 5.4) Sub Networks: future-------------------------------------------------------
+
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('FUTURE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01')
+
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+
+
+# 5.5) Sub Networks: Matches incl active members --------------------------
+
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         # BELT %in% c('FUTURE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01') %>%
+  group_by(INDEX) %>%
+  filter(sum(FACTION == "NOT ACTIVE") <= 1) %>%
+  ungroup()
+
+# title <- title %>%
+#   group_by(INDEX) %>%
+#   filter(sum(NAME == 'UTAMI HAYASHISHITA') >= 1 ) %>%
+#   ungroup()
+
+# title <- title %>%
+#   filter(FACTION == 'NOT ACTIVE')
+
+# title <- title %>%
+#   filter(BELT %in% c('RED BELT'))
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+
+
+# 5.6) Sub Networks: Matches incl inactive members ------------------------
+
+
+data <- stardom %>%
+  # filter(DATE >= '2019-01-01') %>%
+  filter(SINGLE_FLG) %>%
+  filter(!str_detect(MATCH, 'RUMBLE')) %>%
+  mutate(INDEX = row_number()) %>%
+  separate_rows(MATCH, sep = 'VS') %>%
+  mutate(MATCH = str_squish(MATCH)) %>%
+  left_join(faction_map) %>%
+  select(-MATCH)
+
+
+title <- data %>%
+  filter(TITLE_FLG,
+         # BELT %in% c('FUTURE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01') %>%
+  group_by(INDEX) %>%
+  filter(sum(FACTION == "NOT ACTIVE") >= 1) %>%
+  ungroup()
+
+# title <- title %>%
+#   group_by(INDEX) %>%
+#   filter(sum(NAME == 'UTAMI HAYASHISHITA') >= 1 ) %>%
+#   ungroup()
+
+# title <- title %>%
+#   filter(FACTION == 'NOT ACTIVE')
+
+# title <- title %>%
+#   filter(BELT %in% c('RED BELT'))
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP == 'NOT ACTIVE' ~ 30,
+                               T ~ 50),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = 1-time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+
+
+# 5.7) Sub Networks: Wrestler(s) ------------------------------------------------
+wrestler <- hub %>%
+  head(10) %>%
+  pull(NAME)
+
+title <- data %>%
+  filter(TITLE_FLG,
+         # BELT %in% c('WHITE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01') %>%
+    group_by(INDEX) %>%
+    filter(sum(NAME %in% wrestler) >0) %>%
+    ungroup()
+
+# title <- data %>%
+#   group_by(INDEX) %>%
+#   filter(sum(NAME == wrestler) >0) %>%
+#   ungroup() %>%
+#   distinct(NAME) %>%
+#   left_join(title) %>%
+#   distinct()
+
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(GROUP = LABEL %in% wrestler,
+         color.background = case_when(LABEL %in% wrestler ~ "#59A14F",
+                                      T ~ "white"),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP ~ 40,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -500,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
+                                     damping = 0.15),
+             minVelocity = 45)
+
+
+
+# 5.8) Sub Networks - FACTIONS --------------------------------------------
+
+faction <- "GOD'S EYE"
+
+title <- data %>%
+  filter(TITLE_FLG,
+         # BELT %in% c('WHITE BELT'),
+         # FACTION != 'NOT ACTIVE',
+         DATE >= '2010-01-01') %>%
+  group_by(INDEX) %>%
+  filter(sum(FACTION %in% faction) >0) %>%
+  ungroup()
+
+# title <- data %>%
+#   group_by(INDEX) %>%
+#   filter(sum(NAME == wrestler) >0) %>%
+#   ungroup() %>%
+#   distinct(NAME) %>%
+#   left_join(title) %>%
+#   distinct()
+
+
+
+
+nodes <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 30,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges <- title %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = COLOR.COLOR,
+         COLOR.OPACITY = time_arrow(DATE),
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes %>%
+             rename_with(tolower, -borderWidth), 
+           edges %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -500,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
+                                     damping = 0.15),
+             minVelocity = 45)
 
 
