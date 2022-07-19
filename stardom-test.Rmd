@@ -1,8 +1,10 @@
 ---
 title: "Network Analysis of Stardom Wrestling Singles Title Matches"
 output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
 ---
-
 
 ```{r SETUP, include = F}
 knitr::opts_chunk$set(echo = TRUE)
@@ -21,12 +23,12 @@ library(ggthemes)
 library(showtext)
 library(igraph)
 library(visNetwork)
+library(knitr)
 ```
-
 
 ```{r STARDOM DATA PREP, include = F}
 # UPDATE TO YOUR WORKING DIRECTORY
-setwd("~/Projects/Stardom")
+setwd("D:/Alejandro/Documents/R Projects/StardomData")
 
 # IBM PLEX SANS
 font_add(family = "IBM Plex Sans", # Name you want to use 
@@ -81,7 +83,7 @@ gang_pal <- function(string = NULL) {
   return(out)
 }
 
-# faction color palette function
+# belt color palette function
 belter_pal <- function(string = NULL) {
   out <- case_when(string %>% str_detect('RED') ~ '#ef6f6a',
                    string %>% str_detect('WHITE') ~ "#fcfbfd",
@@ -106,6 +108,32 @@ time_arrow <- function(date = NULL) {
   return(out)
 }
 
+# based off show_col(...)
+show_legend <- function (colours, 
+                         text = NULL,
+                         labels = TRUE, borders = NULL, cex_label = 1, 
+                         ncol = NULL) 
+{
+  n <- length(colours)
+  ncol <- ncol %||% ceiling(sqrt(length(colours)))
+  nrow <- ceiling(n/ncol)
+  colours <- c(colours, rep(NA, nrow * ncol - length(colours)))
+  colours <- matrix(colours, ncol = ncol, byrow = TRUE)
+  old <- par(pty = "s", mar = c(0, 0, 0, 0))
+  on.exit(par(old))
+  size <- max(dim(colours))
+  plot(c(0, size), c(0, -size), type = "n", xlab = "", ylab = "", 
+       axes = FALSE)
+  rect(col(colours) - 1, -row(colours) + 1, col(colours), -row(colours), 
+       col = colours, border = borders)
+  if (labels) {
+    hcl <- farver::decode_colour(colours, "rgb", "hcl")
+    label_col <- ifelse(hcl[, "l"] > 50, "black", "white")
+    text(col(colours) - 0.5, -row(colours) + 0.5, text, 
+         cex = cex_label, col = label_col)
+  }
+}
+
 # manual mapping, kinda sucks
 faction_map <- read_csv('Stardom Factions.csv') %>%
   mutate(NAME = str_squish(NAME))
@@ -127,55 +155,70 @@ stardom <- read_excel("Stardom Match Guide.xlsx",
          TITLE_FLG = BELT != 'NONE',
          WINNER = case_when(WINNER == 'KAIRI HOJO' ~ "KAIRI", 
                             WINNER == "KAGETSU" ~ "YU ISHINO (FKA KAGETSU)",
-                            WINNER %in% c('KAORI YONEYAMA', "DEATH YAMA-SAN") ~ "FUKIGEN DEATH",
+                            WINNER %in% c("DEATH YAMA-SAN", "FUKIGEN DEATH") ~ "KAORI YONEYAMA",
                             T ~ WINNER)) %>%
   mutate(across(ends_with("_FLG"), ~ replace_na(., FALSE)))
 ```
 
+# About World Wonder Ring Stardom
 
+**World Wonder Ring Stardom** [スターダム 女子プロレス] (commonly referred to simply as *Stardom*) is a Japanese women's pro wrestling promotion that was founded in 2010 and quickly gained a reputation for very physical matches and their ability to develop young stars.
+In 2019 Stardom was acquired by Japanese trading card game company Bushiroad alongside **New Japan Pro Wrestling** (NJPW), the largest wrestling promotion in the country.
+In recent years, the company faced a tumultuous period of injuries, key retirements, and the tragic death of one of their future stars Hana Kimura just as the COVID-19 pandemic was starting.
+The company was able to reset with a rebuilt roster and experienced one of their best periods of growth and acclaim.
+According to Pro Wrestling Illustrated, Stardom averaged the second-most fans in Japan per event in 2021 placing it ahead of other notable promotions like Dragon Gate, NOAH, and All Japan (all of which have male-only rosters).
 
-## Stardom Wrestling
+### Stardom Singles Championship Belts
 
-<https://www.stardom-world.com/>
+This analysis focuses on the **singles championships** in Stardom (see table below).
+Tag team, Trios, and non-title matches were excluded from analysis due to availability of data and to reduce complexity of data wrangling.
 
++------------------------------------+-------------------------------------+------------------+
+| Championship Belt                  | Description                         | Current Champion |
++====================================+=====================================+==================+
+| **World of Stardom Championship**  | Top championship in promotion       | Syuri            |
+|                                    |                                     |                  |
+| *(aka, Red Belt)*                  | in terms of prestige and history.   |                  |
++------------------------------------+-------------------------------------+------------------+
+| **Wonder of Stardom Championship** | Second biggest prize in Stardom,    | Saya Kamitani    |
+|                                    |                                     |                  |
+| *(aka, White Belt)*                | but more than just a junior title.  |                  |
++------------------------------------+-------------------------------------+------------------+
+| **High Speed Championship**        | Matches tend to be short but        | AZM              |
+|                                    |                                     |                  |
+|                                    | action packed with frenetic pacing. |                  |
++------------------------------------+-------------------------------------+------------------+
+| **SWA Undisputed World**           | Champions are only allowed to       | Mayu Iwatani     |
+|                                    |                                     |                  |
+| **Women's Championship**           | defend title against wrestlers of   |                  |
+|                                    |                                     |                  |
+|                                    | a different nationality.            |                  |
++------------------------------------+-------------------------------------+------------------+
+| **Future of Stardom Championship** | Can only be held by wrestlers       | Hanan            |
+|                                    |                                     |                  |
+|                                    | under 21 years old or with less     |                  |
+|                                    |                                     |                  |
+|                                    | than 3 years of experience.         |                  |
++------------------------------------+-------------------------------------+------------------+
 
+### How to Watch
 
-## Stardom Singles Championship Belts
+Stardom has a subscription service ([Stardom World](https://www.stardom-world.com/)) where new matches are uploaded with English subtitles a few days after they happen.
 
-Red Belt, White Belt, High Speed Belt, SWA Belt, Future Belt
+Edited highlights from their pay-per-view shows are also uploaded to the [Stardom Youtube Channel](https://www.youtube.com/c/STARDOMofficial/) several weeks later.
+This is probably the easiest way to drop in and check out what they have to offer.
 
-Current Champions:
+# Data and Methodology
 
-## Data
+Data used for analysis was based on a Google Sheet of [Stardom Recommended Matches](https://docs.google.com/spreadsheets/d/1uJ6cFxqg-A24q2GFb59KL8ic3vV-dBAn7cB7OJ8-rK0/edit?usp=sharing) with additional data wrangling to get necessary data structure for network analysis and plotting.
+Title matches and outcomes were validated manually using [Cagematch](https://www.cagematch.net/?id=8&nr=745) entries.
 
-<https://github.com/areyes13/StardomData>
+Wrestlers with multiple aliases or newer names were manually consolidated under a single name where possible (e.g., *Yu Ishino* is used instead of their former *Kagetsu* name after recently coming out as trans).
+Faction memberships were also mapped manually for **active** wrestlers and were based on the latest known affiliations at the time of analysis.
 
+Data and R scripts used for this project can be found in [github](https://github.com/areyes13/StardomData)
 
-```{r TABLE, echo = F, results = "asis"}
-library(knitr)
-library(dplyr)
-kable(stardom %>%
-        filter(TITLE_FLG) %>%
-        select(DATE, MATCH, WINNER, BELT) %>%
-        head(), 
-      caption = "Sample of Stardom Data")
-
-```
-
-
-## How to Interpret Directed Graph
-
-Example
-
-Edge Palette
-
-Faction Palette
-
-Degree
-
-## Overall Network
-
-```{r FULL NETWORK, echo = F, message = F}
+```{r TABLE SAMPLE, echo = F, message = F, results = "asis"}
 data <- stardom %>%
   # filter(DATE >= '2019-01-01') %>%
   filter(SINGLE_FLG) %>%
@@ -186,24 +229,101 @@ data <- stardom %>%
   left_join(faction_map) %>%
   select(-MATCH)
 
-
 title <- data %>%
   filter(TITLE_FLG,
-         # BELT %in% c('FUTURE BELT'),
-         # FACTION != 'NOT ACTIVE',
          DATE >= '2010-01-01')
 
-# title <- title %>%
-#   group_by(INDEX) %>%
-#   filter(sum(NAME == 'UTAMI HAYASHISHITA') >= 1 ) %>%
-#   ungroup()
+title %>%
+  group_by(BELT) %>%
+  summarise(`Title Contenders` = n_distinct(NAME),
+            `Total Champions` = n_distinct(WINNER),
+            `Total Matches` = n_distinct(INDEX)) %>%
+  left_join(
+    title %>%
+      group_by(BELT, WINNER) %>%
+      summarise(DEF = n_distinct(INDEX)) %>%
+      group_by(BELT) %>%
+      summarise(`Median Title Defenses` = median(DEF))
+  ) %>%
+  rename(Title = BELT) %>%
+  kable(caption = 'Overview of Stardom Singles Championships')
 
-# title <- title %>%
-#   filter(FACTION == 'NOT ACTIVE')
+```
 
-# title <- title %>%
-#   filter(BELT %in% c('RED BELT'))
+### Network Analysis
 
+Networks can be used to represent and study the relationships between objects or people.
+In Network Analysis **nodes** represent the objects to be studied and **edges** represent the relationships between the nodes.
+
+In this analysis, Stardom Wrestlers will act as the **nodes** while the **edges** will represent singles title matches with the following characteristics:
+
+**Nodes**
+
+-   Faction Membership - represented by node color for **active** wrestlers
+
+-   Size - nodes with more edges linked to it will be larger (this refers to the *degree* of each node)
+
+**Edges**
+
+-   Direction - arrow identifies the winner of the match (from loser to winner; ties represented reciprocally)
+
+-   Title - color of edge identifies which title was being contested
+
+In the simplified example below, we can see that **Syuri** and **Mayu Iwatani** traded **Red Belt** losses with each other (represened by reciprocal edges between their nodes), while **Giulia** defeated **Syuri** in a **White Belt** title match.
+The **size of the nodes** for Syuri and Mayu Iwatani are bigger than Giulia's because they have a larger number of total edges connected to them (i.e., they have a higher degree).
+
+```{r EXAMPLE, echo = F}
+n <- tibble(id = 1:3,
+            group = c("GOD'S EYE", 'DONNA DEL MONDO', "STARS"),
+            label = c("SYURI", "GUILIA", "MAYU IWATANI"),
+            color.background = gang_pal(group),
+            color.border = 'black',
+            size = c(10,5,10) * 3,
+            font.color = lighten(color.background, amount = 0.8))
+
+e <- tibble(from = c(1,1,3), to = c(3,2,1),
+            TITLE = c('RED BELT', 'WHITE BELT', 'RED BELT'),
+            color.color = belter_pal(TITLE),
+            arrows = "from",
+            smooth.type = 'curvedCW',
+            smooth.roundness = .5)
+
+visNetwork(n, e, width = "100%",
+           background = '#303030')
+```
+
+**Additional Readings:**
+
+<https://cphss.wustl.edu/methodsandstrategies/social-network-analysis/network-analysis-101/>
+
+<http://networksciencebook.com/>
+
+<https://www.cs.cornell.edu/home/kleinber/networks-book/>
+
+<https://kateto.net/network-visualization>
+
+## Overall Network
+
+```{r}
+belts <- c("RED BELT", "WHITE BELT", "HIGH SPEED BELT", "SWA", "FUTURE")
+
+show_legend(colours = belter_pal(belts),
+            text = belts,
+            ncol = 5)
+
+
+factions <- c("COSMIC ANGELS", "DONNA DEL MONDO", "GOD'S EYE", "OEDO TAI", "QUEEN'S QUEST", "STARS", "UNAFFILIATED", "NOT ACTIVE")
+
+show_legend(colours = gang_pal(factions),
+            text = factions,
+            ncol = 8)
+
+belter_pal(belts)
+gang_pal(factions)
+```
+
+
+```{r FULL NETWORK, echo=F, message=FALSE}
 
 
 nodes <- title %>%
@@ -271,7 +391,8 @@ visNetwork(nodes %>%
 ```
 
 ## Full Network Statistics
-```{r, include = F, message = F}
+
+```{r NETWORK STAT OBJ, include = F, message = F}
 net <- graph_from_data_frame(d = edges %>%
                                mutate(from = TO,
                                       to = FROM) %>%
@@ -284,32 +405,114 @@ net <- graph_from_data_frame(d = edges %>%
 ```
 
 **Density:** The proportion of present edges from all possible edges in the network.
-```{r, echo = F}
+
+```{r DENSITY, echo = F}
 ecount(net)/(vcount(net)*(vcount(net)-1))
 ```
 
 **Reciprocity:** the proportion of reciprocated ties (for a directed network).
-```{r, echo =F}
+
+```{r RECIPROCITY, echo =F}
 reciprocity(net)
 ```
 
 **Average path length:** Mean of the shortest distance between each pair of nodes in the network
-```{r, echo = F}
+
+```{r AVG PATH, echo = F}
 mean_distance(net, directed=T)
 ```
+
 **Diameter:** Longest path between any two nodes.
-```{r, echo = F, message = F, results = "asis"}
-kable(tibble(ID = get_diameter(net, directed=T) %>% 
-         as_ids %>% 
-         as.numeric()) %>%
+
+```{r DIAMETER, echo=F, message=FALSE}
+
+
+set.seed(666)
+
+# ref table
+d <- tibble(ID = get_diameter(net, directed=T) %>% 
+              as_ids %>% 
+              as.numeric()) %>%
   left_join(nodes %>%
               select(ID, GROUP, LABEL)) %>%
-  select(LABEL, GROUP))
+  select(LABEL, GROUP)
+
+# vector of names to highlight
+d_list <- d %>% pull(LABEL)
+
+path_col <- tibble(EDGE = farthest_vertices(net, directed = T)$vertices %>%
+                     {shortest_paths(net, .[1], .[2], output = "both")} %>%
+                     .$epath %>%
+                     .[[1]] %>%
+                     as_ids()) %>%
+  separate(col = "EDGE", c("TO","FROM"), sep = "\\|") %>%
+  mutate(across(where(is.character), as.numeric),
+         DUMMY = T)
+
+# set new palette for nodes in vector
+nodes_d <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(GROUP = LABEL %in% d_list,
+         color.background = case_when(LABEL %in% d_list ~ "#fc9272",
+                                      T ~ "#eff3ff"),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP ~ 70,
+                               T ~ 0),
+         borderWidth = 2)
+
+edges_d <- edges %>%
+  select(!starts_with("COLOR")) %>%
+  distinct(FROM, TO, .keep_all = T) %>%
+  unite("TEST", c(FROM, TO), remove = F) %>%
+  left_join(path_col) %>%
+  mutate(WIDTH = case_when(DUMMY ~ 10,
+                           T ~ 5),
+         COLOR.COLOR = case_when(DUMMY ~ "#fb6a4a",
+                                 T ~ "#f7f7f7"),
+         COLOR.OPACITY = case_when(DUMMY ~ 1,
+                                 T ~ 0.3))
+
+
+set.seed(666)
+network_d <- visNetwork(nodes_d %>%
+             rename_with(tolower, -borderWidth),
+           edges_d %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -500,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
+                                     damping = 0.15),
+             minVelocity = 45)
+
+d %>% kable
+network_d
+
+
 ```
 
-**Hub:** statistic measuring number of *OUTGOING* links for each node. In this context an *outgoing* link means a loss in a title match so we can use this statistic to loosely identify wrestlers that were regularly featured in key matches but didn't win the majority of the time. Note that this statistic attempts to measure the quality of each "hub" by giving higher scores to nodes with *incoming* links as well as boosting hubs with outgoing links to other nodes with high degrees. In other words, a high scoring hub will have a losing record in title matches, but those loses will tend be against more experienced opponents (measured by number of links).
+**Hub:** statistic measuring number of *OUTGOING* links for each node.
+In this context an *outgoing* link means a loss in a title match so we can use this statistic to loosely identify wrestlers that were regularly featured in key matches but didn't win the majority of the time.
+Note that this statistic attempts to measure the quality of each "hub" by giving higher scores to nodes with *incoming* links as well as boosting hubs with outgoing links to other nodes with high degrees.
+In other words, a high scoring hub will have a losing record in title matches, but those loses will tend be against more experienced opponents (measured by number of links).
 Wrestlers without any *incoming* links (title wins) are not considered high quality hubs (sorry Jungle Kyona fans).
-```{r, echo = F, message= F, results = "asis"}
+
+```{r HUB, echo = F, message= F}
 hub <- hub_score(net, weights = NA)$vector %>% 
   as_tibble(rownames = NA) %>%
   rownames_to_column("ID") %>%
@@ -320,14 +523,68 @@ hub <- hub_score(net, weights = NA)$vector %>%
   rename(NAME = LABEL,
          HUB = value)
 
-kable(hub %>% 
-        select(NAME, GROUP, HUB) %>%
-        head(10))
+# kable(hub %>% 
+#         select(NAME, GROUP, HUB) %>%
+#         head(10))
+
+hub_list <- hub %>% pull(NAME) %>% head(10)
+hub_list
+
+# set new palette for nodes in vector
+nodes_hub <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(GROUP = LABEL %in% hub_list,
+         color.background = case_when(LABEL %in% hub_list ~ "#6baed6",
+                                      T ~ "#eff3ff"),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP ~ 70,
+                               T ~ 20),
+         borderWidth = 2)
+
+edges_hub <- edges %>%
+  select(!starts_with("COLOR")) %>%
+  distinct(FROM, TO, .keep_all = T) %>%
+  mutate(COLOR.COLOR = case_when(NAME %in% hub_list ~ "#9ecae1",
+                                 T ~ "#f7f7f7"),
+         COLOR.HIGHLIGHT = case_when(NAME %in% hub_list ~ "white",
+                                 T ~ "#f7f7f7"),
+         COLOR.OPACITY = case_when(NAME %in% hub_list ~ 0.75,
+                                 T ~ 0.3))
+
+set.seed(666)
+network_hub <- visNetwork(nodes_hub %>%
+                            rename_with(tolower, -borderWidth),
+                          edges_hub %>%
+                            rename_with(tolower, -selectionWidth),
+                          height = "1000px", width = "100%",
+                          background = '#303030') %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -500,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
+                                     damping = 0.15),
+             minVelocity = 45)
+
+network_hub
 ```
 
-**Authority:** Incoming links. Measures wrestlers with high win rates against experienced title contenders (measured by number of links)
+**Authority:** Incoming links.
+Measures wrestlers with high win rates against experienced title contenders (measured by number of links)
 
-```{r,  echo = F, message= F, results = "asis"}
+```{r AUTHORITY,  echo = F, message= F}
 auth <- authority_score(net, weight = NA)$vector %>% 
   as_tibble(rownames = NA) %>%
   rownames_to_column("ID") %>%
@@ -338,16 +595,68 @@ auth <- authority_score(net, weight = NA)$vector %>%
   rename(NAME = LABEL,
          AUTHORITY = value)
 
-kable(auth %>% 
-        select(NAME, GROUP, AUTHORITY) %>%
-        head(10))
+auth_list <- auth %>% pull(NAME) %>% head(10)
+
+auth_list
+
+# set new palette for nodes in vector
+nodes_auth <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(GROUP = LABEL %in% auth_list,
+         color.background = case_when(LABEL %in% auth_list ~ "#78c679",
+                                      T ~ "#eff3ff"),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP ~ 70,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+edges_auth <- edges %>%
+  select(!starts_with("COLOR")) %>%
+  distinct(FROM, TO, .keep_all = T) %>%
+  mutate(COLOR.COLOR = case_when(WINNER %in% auth_list ~ "#d9f0a3",
+                                 T ~ "#f7f7f7"),
+         COLOR.HIGHLIGHT = 'white',
+         COLOR.OPACITY = case_when(WINNER %in% auth_list ~ 0.5,
+                                 T ~ 0.3))
+
+set.seed(666)
+network_auth <- visNetwork(nodes_auth %>%
+                            rename_with(tolower, -borderWidth),
+                          edges_auth %>%
+                            rename_with(tolower, -selectionWidth),
+                          height = "1000px", width = "100%",
+                          background = '#303030') %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -500,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
+                                     damping = 0.15),
+             minVelocity = 45)
+
+network_auth
+
 ```
 
 **Closeness:** Closeness centrality indicates how close a node is to all other nodes in the network.
 It is calculated as the average of the shortest path length from the node to every other node in the network
 
 Individuals with high 'influence' over network
-```{r,  echo = F, message= F, results = "asis"}
+
+```{r CLOSENESS,  echo = F, message= F, results = "asis"}
 
 close <- closeness(net, mode="all", weights=NA) %>% 
   as_tibble(rownames = NA) %>%
@@ -364,12 +673,11 @@ kable(close %>%
 ```
 
 **Eigenvector:** Eigenvector centrality is used to measure the level of influence of a node within a network.
-Each node within the network will be given a score or value:
-the higher the score the greater the level of influence within the network.
+Each node within the network will be given a score or value: the higher the score the greater the level of influence within the network.
 This score is relative to the number of connections a node will have to other nodes.
-Connections to high-scoring eigenvector centrality nodes
-contribute more to the score of the node than equal connections to low-scoring nodes.
-```{r echo = F, message= F, results = "asis"}
+Connections to high-scoring eigenvector centrality nodes contribute more to the score of the node than equal connections to low-scoring nodes.
+
+```{r EIGENVECTOR, echo = F, message= F}
 
 eigen_df <-eigen_centrality(net, directed=T, weights=NA)$vector %>% 
   as_tibble(rownames = NA) %>%
@@ -379,18 +687,69 @@ eigen_df <-eigen_centrality(net, directed=T, weights=NA)$vector %>%
               select(ID, GROUP, LABEL)) %>%
   arrange(-value)
 
-kable(eigen_df %>%
+eigen_list <- eigen_df %>%
         rename(NAME = LABEL) %>%
-        select(NAME, GROUP) %>%
-        head(10))
+        pull(NAME) %>%
+        head(10)
+
+eigen_list
+
+# set new palette for nodes in vector
+nodes_e <- title %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(GROUP = LABEL %in% eigen_list,
+         color.background = case_when(LABEL %in% eigen_list ~ "#a8ddb5",
+                                      T ~ "#eff3ff"),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP ~ 70,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+edges_e <- edges %>%
+  select(!starts_with("COLOR")) %>%
+  distinct(FROM, TO, .keep_all = T) %>%
+  mutate(COLOR.COLOR = case_when(WINNER %in% eigen_list ~ "#ccebc5",
+                                 NAME %in% eigen_list ~ "#ccebc5",
+                                 T ~ "#f7f7f7"),
+         COLOR.HIGHLIGHT = 'white',
+         COLOR.OPACITY = case_when(WINNER %in% eigen_list ~ 0.7,
+                                 T ~ 0.3))
+
+set.seed(666)
+network_e <- visNetwork(nodes_e%>%
+                          rename_with(tolower, -borderWidth),
+                        edges_e %>%
+                          rename_with(tolower, -selectionWidth),
+                        height = "1000px", width = "100%",
+                        background = '#303030') %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -500,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
+                                     damping = 0.15),
+             minVelocity = 45)
+
+network_e
 ```
 
-**Betweenness:** Betweenness (Number of geodesics that pass through the node or the edge.)
-Vertices with high betweenness may have considerable influence
-within a network by virtue of their control over information passing between others.
-They are also the ones whose removal from the network will most disrupt communications
-between other vertices because they lie on the largest number of paths taken by messages.
-```{r echo = F, message= F, results = "asis"}
+**Betweenness:** Betweenness (Number of geodesics that pass through the node or the edge.) Vertices with high betweenness may have considerable influence within a network by virtue of their control over information passing between others.
+They are also the ones whose removal from the network will most disrupt communications between other vertices because they lie on the largest number of paths taken by messages.
+
+```{r BETWEEN, echo = F, message= F, results = "asis"}
 
 between_df <- betweenness(net, directed=T, weights=NA) %>% 
   as_tibble(rownames = NA) %>%
@@ -406,7 +765,158 @@ kable(between_df %>%
         head(10))
 ```
 
-## White Belt W/L
+## Red Belt Sub Graph
+
+```{r RED BELT ONLY, echo = F, message = F}
+title_red <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('RED BELT'),
+         DATE >= '2010-01-01')
+
+
+
+
+nodes_red <- title_red %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title_red %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 40,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges_red <- title_red %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes_red %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes_red %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = "white",
+         COLOR.OPACITY = 0.7,
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes_red %>%
+             rename_with(tolower, -borderWidth), 
+           edges_red %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+```
+
+## White Belt Sub Graph
+
+```{r WHITE BELT ONLY, echo = F, message = F}
+title_white <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('WHITE BELT'),
+         DATE >= '2010-01-01')
+
+
+
+
+nodes_white <- title_white %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title_white %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 40,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges_white <- title_white %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes_white %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes_white %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = "white",
+         COLOR.OPACITY = 0.7,
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes_white %>%
+             rename_with(tolower, -borderWidth), 
+           edges_white %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+```
+
+*White Belt W/L Record*
+
 ```{r WHITE BELT BAR, echo = F, message=F}
 title %>%
   filter(BELT %in% c('WHITE BELT')) %>%
@@ -440,6 +950,7 @@ title %>%
 ```
 
 ## Red Belt W/L
+
 ```{r RED, echo = F, message=F}
 # Red Belt
 title %>%
@@ -473,3 +984,77 @@ title %>%
         plot.background = element_blank())
 ```
 
+## High Speed Belt Sub Graph
+
+```{r HIGH SPEED BELT ONLY, echo = F, message = F}
+title_speed <- data %>%
+  filter(TITLE_FLG,
+         BELT %in% c('HIGH SPEED BELT'),
+         DATE >= '2010-01-01')
+
+
+
+
+nodes_speed <- title_speed %>%
+  distinct(NAME, FACTION) %>%
+  filter(!is.na(NAME)) %>%
+  arrange(NAME) %>%
+  mutate(ID = row_number()) %>%
+  left_join(title_speed %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
+  rename(GROUP = FACTION,
+         LABEL = NAME) %>%
+  mutate(color.background = gang_pal(GROUP),
+         color.border = 'black',
+         color.highlight.background = lighten(color.background, amount = 0.5),
+         color.highlight.border = color.background,
+         font.color = lighten(color.background, amount = 0.8),
+         font.face = "IBM Plex Sans",
+         font.size = case_when(GROUP != 'NOT ACTIVE' ~ 40,
+                               T ~ 20),
+         borderWidth = 2)
+
+
+
+edges_speed <- title_speed %>%
+  distinct(WINNER, NAME, BELT, INDEX, LINK, DATE) %>%
+  filter(WINNER != NAME) %>%
+  left_join(nodes_speed %>% select(LABEL, ID, GROUP),
+            by = c('WINNER' = "LABEL")) %>%
+  rename(FROM = ID,
+         FACTION = GROUP) %>%
+  left_join(nodes_speed %>% select(LABEL, ID),
+            by = c('NAME' = "LABEL")) %>%
+  rename(TO = ID) %>%
+  filter(!is.na(FROM),
+         !is.na(TO)) %>%
+  rename(GROUP = BELT,
+         TITLE = LINK) %>%
+  mutate(WIDTH = 5,
+         COLOR.COLOR = belter_pal(GROUP),
+         COLOR.HIGHLIGHT = "white",
+         COLOR.OPACITY = 0.7,
+         ARROWS = "from",
+         smooth.type = 'curvedCW',
+         smooth.roundness = .5,
+         selectionWidth = 7)
+
+
+visNetwork(nodes_speed %>%
+             rename_with(tolower, -borderWidth), 
+           edges_speed %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
+  visOptions(highlightNearest = TRUE,
+             selectedBy = 'group',
+             nodesIdSelection = TRUE) %>%
+  visPhysics(solver = "forceAtlas2Based",
+             forceAtlas2Based = list(gravitationalConstant = -300,
+                                     springConstant = 0.02,
+                                     avoidOverlap = 0.5,
+                                     springLength = 20,
+                                     damping = 0.15),
+             minVelocity = 35)
+```
