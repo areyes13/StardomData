@@ -322,7 +322,6 @@ belter_pal(belts)
 gang_pal(factions)
 ```
 
-
 ```{r FULL NETWORK, echo=F, message=FALSE}
 
 
@@ -389,6 +388,8 @@ visNetwork(nodes %>%
                                      damping = 0.15),
              minVelocity = 45)
 ```
+
+![](legend.png)
 
 ## Full Network Statistics
 
