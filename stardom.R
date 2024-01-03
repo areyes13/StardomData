@@ -3,7 +3,7 @@ options(java.parameters = "-Xmx8000m")
 options(scipen=999)
 
 # UPDATE TO YOUR WORKING DIRECTORY
-setwd("D:/Alejandro/Documents/R Projects/StardomData")
+setwd("~/Projects/Stardom")
 
 library(readr)
 library(readxl)
