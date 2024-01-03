@@ -28,7 +28,7 @@ library(knitr)
 
 ```{r STARDOM DATA PREP, include = F}
 # UPDATE TO YOUR WORKING DIRECTORY
-setwd("~/Projects/Stardom")
+setwd("D:/Alejandro/Documents/R Projects/StardomData")
 
 # IBM PLEX SANS
 font_add(family = "IBM Plex Sans", # Name you want to use 
@@ -158,9 +158,6 @@ stardom <- read_excel("Stardom Match Guide.xlsx",
                             WINNER %in% c("DEATH YAMA-SAN", "FUKIGEN DEATH") ~ "KAORI YONEYAMA",
                             T ~ WINNER)) %>%
   mutate(across(ends_with("_FLG"), ~ replace_na(., FALSE)))
-
-# set random generator seed (for graph layouts)
-seed <- 666
 ```
 
 # About World Wonder Ring Stardom
@@ -281,7 +278,7 @@ n <- tibble(id = 1:3,
             label = c("SYURI", "GUILIA", "MAYU IWATANI"),
             color.background = gang_pal(group),
             color.border = 'black',
-            size = c(15,5,10) * 3,
+            size = c(10,5,10) * 3,
             font.color = lighten(color.background, amount = 0.8))
 
 e <- tibble(from = c(1,1,3), to = c(3,2,1),
@@ -292,8 +289,7 @@ e <- tibble(from = c(1,1,3), to = c(3,2,1),
             smooth.roundness = .5)
 
 visNetwork(n, e, width = "100%",
-           background = '#303030') %>%
-  visLayout(randomSeed = seed)
+           background = '#303030')
 ```
 
 **Additional Readings:**
@@ -308,29 +304,23 @@ visNetwork(n, e, width = "100%",
 
 ## Overall Network
 
-<!-- ```{r, echo = F, message = F} -->
+```{r}
+belts <- c("RED BELT", "WHITE BELT", "HIGH SPEED BELT", "SWA", "FUTURE")
 
-<!-- belts <- c("RED BELT", "WHITE BELT", "HIGH SPEED BELT", "SWA", "FUTURE") -->
+show_legend(colours = belter_pal(belts),
+            text = belts,
+            ncol = 5)
 
-<!-- show_legend(colours = belter_pal(belts), -->
 
-<!--             text = belts, -->
+factions <- c("COSMIC ANGELS", "DONNA DEL MONDO", "GOD'S EYE", "OEDO TAI", "QUEEN'S QUEST", "STARS", "UNAFFILIATED", "NOT ACTIVE")
 
-<!--             ncol = 5) -->
+show_legend(colours = gang_pal(factions),
+            text = factions,
+            ncol = 8)
 
-<!-- factions <- c("COSMIC ANGELS", "DONNA DEL MONDO", "GOD'S EYE", "OEDO TAI", "QUEEN'S QUEST", "STARS", "UNAFFILIATED", "NOT ACTIVE") -->
-
-<!-- show_legend(colours = gang_pal(factions), -->
-
-<!--             text = factions, -->
-
-<!--             ncol = 8) -->
-
-<!-- belter_pal(belts) -->
-
-<!-- gang_pal(factions) -->
-
-<!-- ``` -->
+belter_pal(belts)
+gang_pal(factions)
+```
 
 ```{r FULL NETWORK, echo=F, message=FALSE}
 
@@ -352,7 +342,7 @@ nodes <- title %>%
          font.color = lighten(color.background, amount = 0.8),
          font.face = "IBM Plex Sans",
          font.size = case_when(GROUP != 'NOT ACTIVE' ~ 50,
-                               T ~ 30),
+                               T ~ 20),
          borderWidth = 2)
 
 
@@ -380,7 +370,7 @@ edges <- title %>%
          smooth.roundness = .5,
          selectionWidth = 7)
 
-
+set.seed(666)
 visNetwork(nodes %>%
              rename_with(tolower, -borderWidth), 
            edges %>%
@@ -391,16 +381,15 @@ visNetwork(nodes %>%
              selectedBy = 'group',
              nodesIdSelection = TRUE) %>%
   visPhysics(solver = "forceAtlas2Based",
-             forceAtlas2Based = list(gravitationalConstant = -700,
+             forceAtlas2Based = list(gravitationalConstant = -300,
                                      springConstant = 0.02,
                                      avoidOverlap = 0.5,
-                                     springLength = 40,
+                                     springLength = 20,
                                      damping = 0.15),
-             minVelocity = 45) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 45)
 ```
 
-<!-- ![](legend.png) -->
+![](legend.png)
 
 ## Full Network Statistics
 
@@ -489,8 +478,8 @@ edges_d <- edges %>%
   distinct(FROM, TO, .keep_all = T) %>%
   unite("TEST", c(FROM, TO), remove = F) %>%
   left_join(path_col) %>%
-  mutate(WIDTH = case_when(DUMMY ~ 8,
-                           T ~ 4),
+  mutate(WIDTH = case_when(DUMMY ~ 10,
+                           T ~ 5),
          COLOR.COLOR = case_when(DUMMY ~ "#fb6a4a",
                                  T ~ "#f7f7f7"),
          COLOR.OPACITY = case_when(DUMMY ~ 1,
@@ -499,19 +488,18 @@ edges_d <- edges %>%
 
 set.seed(666)
 network_d <- visNetwork(nodes_d %>%
-                          rename_with(tolower, -borderWidth),
-                        edges_d %>%
-                          rename_with(tolower, -selectionWidth),
-                        height = "1000px", width = "100%",
-                        background = '#303030') %>%
+             rename_with(tolower, -borderWidth),
+           edges_d %>%
+             rename_with(tolower, -selectionWidth),
+           height = "1000px", width = "100%",
+           background = '#303030') %>%
   visPhysics(solver = "forceAtlas2Based",
              forceAtlas2Based = list(gravitationalConstant = -500,
                                      springConstant = 0.02,
                                      avoidOverlap = 0.5,
                                      springLength = 40,
                                      damping = 0.15),
-             minVelocity = 45) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 45)
 
 d %>% kable
 network_d
@@ -536,11 +524,12 @@ hub <- hub_score(net, weights = NA)$vector %>%
   rename(NAME = LABEL,
          HUB = value)
 
-# kable(hub %>%
+# kable(hub %>% 
 #         select(NAME, GROUP, HUB) %>%
 #         head(10))
 
 hub_list <- hub %>% pull(NAME) %>% head(10)
+hub_list
 
 # set new palette for nodes in vector
 nodes_hub <- title %>%
@@ -548,17 +537,13 @@ nodes_hub <- title %>%
   filter(!is.na(NAME)) %>%
   arrange(NAME) %>%
   mutate(ID = row_number()) %>%
-  left_join(hub %>%
-              select(-GROUP) %>%
-              rename(SIZE = HUB) %>%
-              mutate(SIZE = ((exp(SIZE) - 1) * 117) + 3)) %>%
-  # left_join(title %>%
-  #             count(NAME) %>%
-  #             mutate(SIZE = n * 3.5)) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
   rename(GROUP = FACTION,
          LABEL = NAME) %>%
   mutate(GROUP = LABEL %in% hub_list,
-         color.background = case_when(LABEL %in% hub_list ~ "#fc9272",
+         color.background = case_when(LABEL %in% hub_list ~ "#6baed6",
                                       T ~ "#eff3ff"),
          color.border = 'black',
          color.highlight.background = lighten(color.background, amount = 0.5),
@@ -566,18 +551,16 @@ nodes_hub <- title %>%
          font.color = lighten(color.background, amount = 0.8),
          font.face = "IBM Plex Sans",
          font.size = case_when(GROUP ~ 70,
-                               T ~ 30),
+                               T ~ 20),
          borderWidth = 2)
 
 edges_hub <- edges %>%
   select(!starts_with("COLOR")) %>%
   distinct(FROM, TO, .keep_all = T) %>%
-  mutate(WIDTH = case_when(NAME %in% hub_list ~ 8,
-                           T ~ 4),
-         COLOR.COLOR = case_when(NAME %in% hub_list~ "#fb6a4a",
+  mutate(COLOR.COLOR = case_when(NAME %in% hub_list ~ "#9ecae1",
                                  T ~ "#f7f7f7"),
-         COLOR.HIGHLIGHT = case_when(NAME %in% hub_list ~ "#fb6a4a",
-                                 T ~ "white"),
+         COLOR.HIGHLIGHT = case_when(NAME %in% hub_list ~ "white",
+                                 T ~ "#f7f7f7"),
          COLOR.OPACITY = case_when(NAME %in% hub_list ~ 0.75,
                                  T ~ 0.3))
 
@@ -589,13 +572,12 @@ network_hub <- visNetwork(nodes_hub %>%
                           height = "1000px", width = "100%",
                           background = '#303030') %>%
   visPhysics(solver = "forceAtlas2Based",
-             forceAtlas2Based = list(gravitationalConstant = -700,
+             forceAtlas2Based = list(gravitationalConstant = -500,
                                      springConstant = 0.02,
-                                     avoidOverlap = 0.75,
+                                     avoidOverlap = 0.5,
                                      springLength = 40,
                                      damping = 0.15),
-             minVelocity = 45) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 45)
 
 network_hub
 ```
@@ -624,17 +606,13 @@ nodes_auth <- title %>%
   filter(!is.na(NAME)) %>%
   arrange(NAME) %>%
   mutate(ID = row_number()) %>%
-  left_join(auth %>%
-              select(-GROUP) %>%
-              rename(SIZE = AUTHORITY) %>%
-              mutate(SIZE = (SIZE * 197) + 3)) %>%
-  # left_join(title %>%
-  #             count(NAME) %>%
-  #             mutate(SIZE = n * 3.5)) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
   rename(GROUP = FACTION,
          LABEL = NAME) %>%
   mutate(GROUP = LABEL %in% auth_list,
-         color.background = case_when(LABEL %in% auth_list ~ "#fc9272",
+         color.background = case_when(LABEL %in% auth_list ~ "#78c679",
                                       T ~ "#eff3ff"),
          color.border = 'black',
          color.highlight.background = lighten(color.background, amount = 0.5),
@@ -642,19 +620,16 @@ nodes_auth <- title %>%
          font.color = lighten(color.background, amount = 0.8),
          font.face = "IBM Plex Sans",
          font.size = case_when(GROUP ~ 70,
-                               T ~ 30),
+                               T ~ 20),
          borderWidth = 2)
 
 
 edges_auth <- edges %>%
   select(!starts_with("COLOR")) %>%
   distinct(FROM, TO, .keep_all = T) %>%
-  mutate(WIDTH = case_when(WINNER %in% auth_list ~ 8, 
-                           T ~ 4),
-         COLOR.COLOR = case_when(WINNER %in% auth_list ~ "#fb6a4a",
+  mutate(COLOR.COLOR = case_when(WINNER %in% auth_list ~ "#d9f0a3",
                                  T ~ "#f7f7f7"),
-         COLOR.HIGHLIGHT = case_when(WINNER %in% auth_list ~ "#fb6a4a",
-                                 T ~ "white"),
+         COLOR.HIGHLIGHT = 'white',
          COLOR.OPACITY = case_when(WINNER %in% auth_list ~ 0.5,
                                  T ~ 0.3))
 
@@ -666,13 +641,12 @@ network_auth <- visNetwork(nodes_auth %>%
                           height = "1000px", width = "100%",
                           background = '#303030') %>%
   visPhysics(solver = "forceAtlas2Based",
-             forceAtlas2Based = list(gravitationalConstant = -700,
+             forceAtlas2Based = list(gravitationalConstant = -500,
                                      springConstant = 0.02,
-                                     avoidOverlap = 0.7,
-                                     springLength = 45,
+                                     avoidOverlap = 0.5,
+                                     springLength = 40,
                                      damping = 0.15),
-             minVelocity = 45) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 45)
 
 network_auth
 
@@ -699,40 +673,13 @@ kable(close %>%
         head(10))
 ```
 
-## Eigenvector Centrality
+**Eigenvector:** Eigenvector centrality is used to measure the level of influence of a node within a network.
+Each node within the network will be given a score or value: the higher the score the greater the level of influence within the network.
+This score is relative to the number of connections a node will have to other nodes.
+Connections to high-scoring eigenvector centrality nodes contribute more to the score of the node than equal connections to low-scoring nodes.
 
-**Eigenvector Centrality** is able to provide a more nuanced view of a node's centrality in a network by scoring three different aspects:
+```{r EIGENVECTOR, echo = F, message= F}
 
-1.  *Number of Inbound Links* (how many singles titles matches has a wrestler won?)
-
-2.  *Quality of Connections* (measures quality of competition; have they beaten strong champions or up-and-comers?)
-
-3.  *Link Propensity of Connections* (measures how well connected their competition is to the rest of the network)
-
-The math behind the algorithm for Eigenvector Centrality is beyond the scope of this analysis, but the concept itself should be intuitive - connections to more "valuable" nodes are simply worth more. It should also be noted that Google's PageRank Engine relies on these basic principles as well.
-
-In the context of wrestling, the Eigenvector Centrality will highlight wrestlers with a high winning percentage against other experienced wrestlers in singles title matches. A singles title win against all-time greats like **Io Shirai** or **Mayu Iwatani** will provide big boosts to Eigenvector Scores. On the other hand, champions like **Saya Kamitani** who have mostly defended against relatively less experienced competition 
-
-
-
-This statistic measures the "*level of influence*" of a node within a network by scoring each one based on their inbound / outbound links to other nodes.
-Connections to highly influential nodes (i.e., high eigenvector values) will result in higher scores.
-
-Wrestlers with more singles titles matches (regardless of outcome) will be ranked higher, but matches against the top champions in the promotion are much more valuable.
-
-*Eigenvector centrality is a more sophisticated view of centrality: a person with few connections could have a very high eigenvector centrality if those few connections were to very well-connected others. Eigenvector centrality allows for connections to have a variable value, so that connecting to some vertices has more benefit than connecting to others. The PageRank algorithm used by Google's search engine is a variant of Eigenvector Centrality, primarily used for directed networks. PageRank considers (1) the number of in-bound links (i.e., sites that link to your site), (2) the quality of the linkers (i.e., the PageRank of sites that link to your site), and (3) the link propensity of the linkers (i.e., the number of sites the linkers link to).*
-
-*Eigenvector centrality measures a node's importance while giving consideration to the importance of its neighbors. For example, a node with 300 relatively unpopular friends on Facebook would have lower eigenvector centrality than someone with 300 very popular friends (like Barack Obama). It is sometimes used to measure a node's influence in the network. It is determined by performing a matrix calculation to determine what is called the principal eigenvector using the adjacency matrix. The mathematics here are more complicated than this book will cover, but the principles of eigenvector centrality are important and intuitive. Not only is it used to determine influence in social networks, but a variant of eigenvector centrality is at the core of Google's PageRank algorithm, which they use to rank web pages.*
-
-*The main principle is that links from important nodes (as measured by degree centrality) are worth more than links from unimportant nodes. All nodes start off equal, but as the computation progresses, nodes with more edges start gaining importance. Their importance propagates out to the nodes to which they are connected. After re-computing many times, the values stabilize, resulting in the final values for eigenvector centrality.*
-
-*It assigns relative scores to all nodes in the network based on the concept that connections to high-scoring nodes contribute more to the score of the node in question than equal connections to low-scoring nodes.*
-
-*Eigenvector centrality is used to measure the level of influence of a node within a network. Each node within the network will be given a score or value: the higher the score the greater the level of influence within the network. This score is relative to the number of connections a node will have to other nodes. Connections to high-scoring eigenvector centrality nodes contribute more to the score of the node than equal connections to low-scoring nodes.*
-
-*We can now try to use the eigenvector statistic to try to identify active roster members that appear to be ready to enter the top echelon of the promotion. We can do this by filtering for the nodes with the highest eigenvector value outside of the top 10 all-time (highlighted in red above).*
-
-```{r EIGENVECTOR, message = F, echo = F}
 eigen_df <-eigen_centrality(net, directed=T, weights=NA)$vector %>% 
   as_tibble(rownames = NA) %>%
   rownames_to_column("ID") %>%
@@ -746,16 +693,7 @@ eigen_list <- eigen_df %>%
         pull(NAME) %>%
         head(10)
 
-eigen_next <- eigen_df %>%
-  arrange(-value) %>%
-  filter(GROUP != 'NOT ACTIVE',
-         !LABEL %in% c(eigen_list, "KAORI YONEYAMA", "KAIRI", "NANAE TAKAHASHI"),
-         value >= 0.005) %>%
-  head(20) %>%
-  pull(LABEL)
-
 eigen_list
-eigen_next
 
 # set new palette for nodes in vector
 nodes_e <- title %>%
@@ -763,46 +701,33 @@ nodes_e <- title %>%
   filter(!is.na(NAME)) %>%
   arrange(NAME) %>%
   mutate(ID = row_number()) %>%
-  left_join(eigen_df %>%
-              select(LABEL, value) %>%
-              rename(NAME = LABEL,
-                     SIZE = value) %>%
-              mutate(SIZE = (SIZE * 197) + 3)) %>%
-  # left_join(title %>%
-  #             count(NAME) %>%
-  #             mutate(SIZE = n * 3.5)) %>%
+  left_join(title %>%
+              count(NAME) %>%
+              mutate(SIZE = n * 3.5)) %>%
   rename(GROUP = FACTION,
          LABEL = NAME) %>%
-  mutate(GROUP = case_when(LABEL %in% eigen_next ~ "FUTURE STARS",
-                           LABEL %in% eigen_list ~ "TOP CHAMPIONS",
-                           GROUP == 'NOT ACTIVE' ~ GROUP,
-                           T ~ "ALL OTHER"),
-         color.background = case_when(LABEL %in% eigen_next ~ "#8cc2ca",
-                                      LABEL %in% eigen_list ~ "#fc9272",
-                                      GROUP == 'NOT ACTIVE' ~ '#969696',
+  mutate(GROUP = LABEL %in% eigen_list,
+         color.background = case_when(LABEL %in% eigen_list ~ "#a8ddb5",
                                       T ~ "#eff3ff"),
          color.border = 'black',
          color.highlight.background = lighten(color.background, amount = 0.5),
          color.highlight.border = color.background,
          font.color = lighten(color.background, amount = 0.8),
          font.face = "IBM Plex Sans",
-         font.size = case_when(LABEL %in% eigen_next ~ 70,
-                               LABEL %in% eigen_list ~ 70,
-                               T ~ 30),
+         font.size = case_when(GROUP ~ 70,
+                               T ~ 20),
          borderWidth = 2)
+
 
 edges_e <- edges %>%
   select(!starts_with("COLOR")) %>%
   distinct(FROM, TO, .keep_all = T) %>%
-  mutate(COLOR.COLOR = case_when(WINNER %in% eigen_list ~ "#fb6a4a",
-                                 WINNER %in% eigen_next ~ "#8cc2ca",
+  mutate(COLOR.COLOR = case_when(WINNER %in% eigen_list ~ "#ccebc5",
+                                 NAME %in% eigen_list ~ "#ccebc5",
                                  T ~ "#f7f7f7"),
-         COLOR.HIGHLIGHT = case_when(WINNER %in% eigen_list ~ "#fb6a4a",
-                                     WINNER %in% eigen_next ~ "#8cc2ca",
-                                     T ~ "#f7f7f7"),
-         COLOR.OPACITY = case_when(WINNER %in% eigen_next ~ 0.6,
+         COLOR.HIGHLIGHT = 'white',
+         COLOR.OPACITY = case_when(WINNER %in% eigen_list ~ 0.7,
                                  T ~ 0.3))
-
 
 set.seed(666)
 network_e <- visNetwork(nodes_e%>%
@@ -811,93 +736,15 @@ network_e <- visNetwork(nodes_e%>%
                           rename_with(tolower, -selectionWidth),
                         height = "1000px", width = "100%",
                         background = '#303030') %>%
-  visOptions(highlightNearest = TRUE,
-             selectedBy = 'group',
-             nodesIdSelection = TRUE) %>%
   visPhysics(solver = "forceAtlas2Based",
-             forceAtlas2Based = list(gravitationalConstant = -700,
+             forceAtlas2Based = list(gravitationalConstant = -500,
                                      springConstant = 0.02,
-                                     avoidOverlap = 0.75,
+                                     avoidOverlap = 0.5,
                                      springLength = 40,
                                      damping = 0.15),
-             minVelocity = 45) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 45)
 
 network_e
-
-
-```
-
-```{r EIGEN BARS, echo = F, message = F, fig.height = 10, fig.width= 15}
-
-fill <- c('#ef6f6a', "#fcfbfd", "#EDC948", "#6388b4", '#55ad89')
-
-# all belt w/l
-eigen_bars <- title %>%
-  group_by(NAME, FACTION, BELT) %>%
-  summarise(degree = n_distinct(INDEX),
-            win = sum(WINNER == NAME),
-            loss = sum(WINNER != NAME)) %>%
-  mutate(loss = loss * -1) %>%
-  gather(RESULT, COUNT, -NAME:-degree) %>%
-  ungroup() %>%
-  full_join(
-    title %>%
-      distinct(WINNER, BELT) %>%
-      expand(WINNER, BELT) %>%
-      filter(!BELT %in% c("TAG BELT", "ARTIST BELT", "NONE")) %>%
-      rename(NAME = WINNER)
-  ) %>%
-  mutate(across(c(degree, COUNT), ~ replace_na(., 0)),
-         RESULT = 'win') %>%
-  mutate(GROUP = case_when(NAME %in% eigen_next ~ "FUTURE STARS",
-                           NAME %in% eigen_list ~ "TOP CHAMPIONS",
-                           T ~ "ALL OTHER"),
-         GROUP = factor(GROUP, levels = c("TOP CHAMPIONS", "FUTURE STARS", "ALL OTHER"))) %>%
-  filter(GROUP != "ALL OTHER") %>%
-  select(-FACTION) %>%
-  arrange(NAME, BELT)
-
-  
-eigen_bars %>%
-  ggplot(aes(reorder(NAME, abs(COUNT), sum), COUNT, fill = fct_rev(BELT))) +
-  facet_wrap(~GROUP, scales = "free", ncol = 2)+
-  scale_fill_manual(values = rev(fill))+
-  geom_col(color = 'grey20', position = 'dodge')+
-  geom_hline(yintercept = 0)+
-  geom_vline(xintercept = c(1:10) + 0.5, 
-             linetype = 'dashed',
-             color = 'grey75',
-             size = 0.5)+
-  scale_y_continuous(name = '\nCount of Singles Championship Matches',
-                     limits = c(-10, 25),
-                     breaks = c(seq(-20,15, 5), 20, 25, 45),
-                     labels = paste(c(seq(-20,15, 5), 20, 25, 45), 
-                                    c("", "", "Losses", "", "",
-                                      "", "", "", "Wins", "", ""),
-                                    sep = '\n'))+
-  coord_flip()+
-  theme_classic()+
-  theme(text = element_text(family="IBM Plex Sans"),
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-        legend.position = "none",
-        legend.text = element_text(size = 16, family = 'IBM Plex Sans Light'),
-        legend.title = element_text(size = 20),
-        strip.text = element_text(face = 'bold', 
-                                  color = 'grey20', 
-                                  size = 20, 
-                                  family = 'IBM Plex Sans'),
-        plot.title = element_text(face = 'bold', color = 'grey20', 
-                                  size = 30, family = 'IBM Plex Sans'),
-        axis.title.y = element_blank(),
-        axis.title.x = element_text(size = 20, face = "bold",
-                                    family = 'IBM Plex Sans'),
-        axis.text.x = element_text(size = 20),
-        axis.text.y = element_text(size = 24, angle = 33, hjust = 1),
-        panel.spacing = unit(6, "lines"),
-        panel.border = element_blank(),
-        plot.background = element_blank())
-
 ```
 
 **Betweenness:** Betweenness (Number of geodesics that pass through the node or the edge.) Vertices with high betweenness may have considerable influence within a network by virtue of their control over information passing between others.
@@ -991,8 +838,7 @@ visNetwork(nodes_red %>%
                                      avoidOverlap = 0.5,
                                      springLength = 20,
                                      damping = 0.15),
-             minVelocity = 35) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 35)
 ```
 
 ## White Belt Sub Graph
@@ -1067,8 +913,7 @@ visNetwork(nodes_white %>%
                                      avoidOverlap = 0.5,
                                      springLength = 20,
                                      damping = 0.15),
-             minVelocity = 35) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 35)
 ```
 
 *White Belt W/L Record*
@@ -1212,6 +1057,5 @@ visNetwork(nodes_speed %>%
                                      avoidOverlap = 0.5,
                                      springLength = 20,
                                      damping = 0.15),
-             minVelocity = 35) %>%
-  visLayout(randomSeed = seed)
+             minVelocity = 35)
 ```
